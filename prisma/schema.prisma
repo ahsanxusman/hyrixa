@@ -1,0 +1,365 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  extensions = [vector]
+}
+
+enum UserRole {
+  CANDIDATE
+  COMPANY
+  ADMIN
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum ExperienceLevel {
+  ENTRY
+  INTERMEDIATE
+  SENIOR
+  EXECUTIVE
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole?
+  accountStatus AccountStatus @default(PENDING)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  profile       Profile?
+  jobs          Job[]
+
+  isAdmin       Boolean   @default(false)
+  lastLoginAt   DateTime?
+  loginCount    Int       @default(0)
+
+  searchHistory SearchHistory[]
+  activityLogs ActivityLog[]
+
+  notifications Notification[]
+  savedJobs     SavedJob[]
+  candidateApplications Application[] @relation("CandidateApplications")
+  companyApplications   Application[] @relation("CompanyApplications")
+
+  emailNotifications Boolean @default(true)
+
+  verificationTokens VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([email, token])
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([email, token])
+  @@index([userId])
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  
+  bio       String?  @db.Text
+  phone     String?
+  location  String?
+  website   String?
+  
+  skills            String[]
+  yearsOfExperience Int?
+  experienceLevel   ExperienceLevel?
+  education         Json?
+  workExperience    Json?
+  cvUrl             String?
+  cvFileName        String?
+  cvText            String?  @db.Text
+  cvEmbedding       Unsupported("vector(1536)")?
+  embeddingUpdatedAt DateTime?
+  
+  companyName     String?
+  companySize     String?
+  industry        String?
+  description     String?  @db.Text
+  foundedYear     Int?
+  headquarters    String?
+  
+  isComplete    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  companyId   String
+  
+  title       String
+  description String   @db.Text
+  requirements String  @db.Text
+  responsibilities String @db.Text
+  
+  location    String
+  jobType     JobType
+  experienceLevel ExperienceLevel
+  
+  salaryMin   Int?
+  salaryMax   Int?
+  currency    String   @default("USD")
+  
+  skills      String[]
+  benefits    String[]
+  
+  status      JobStatus @default(DRAFT)
+  
+  applicationDeadline DateTime?
+  
+  views       Int      @default(0)
+  
+  jobEmbedding       Unsupported("vector(1536)")?
+  embeddingUpdatedAt DateTime?
+
+  savedBy       SavedJob[]
+  applications  Application[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     User     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  query     String
+  filters   Json?
+  resultCount Int    @default(0)
+  
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  JOB_MATCH
+  APPLICATION_STATUS
+  NEW_JOB
+  PROFILE_VIEW
+  MESSAGE
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ApplicationStatus {
+  APPLIED
+  REVIEWING
+  INTERVIEWING
+  OFFERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      NotificationType
+  priority  NotificationPriority @default(MEDIUM)
+  title     String
+  message   String   @db.Text
+  link      String?
+  metadata  Json?
+  read      Boolean  @default(false)
+  emailSent Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+model SavedJob {
+  id        String   @id @default(cuid())
+  userId    String
+  jobId     String
+  notes     String?  @db.Text
+  
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+}
+
+model Application {
+  id              String   @id @default(cuid())
+  candidateId     String
+  jobId           String
+  companyId       String
+  status          ApplicationStatus @default(APPLIED)
+  coverLetter     String?  @db.Text
+  resumeUrl       String?
+  notes           String?  @db.Text
+  
+  appliedAt       DateTime @default(now())
+  lastUpdated     DateTime @updatedAt
+  
+  candidate User @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Cascade)
+  company   User @relation("CompanyApplications", fields: [companyId], references: [id], onDelete: Cascade)
+  job       Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, jobId])
+  @@index([candidateId])
+  @@index([jobId])
+  @@index([companyId])
+  @@index([status])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Analytics {
+  id              String   @id @default(cuid())
+  date            DateTime @default(now())
+  
+  // User metrics
+  totalUsers      Int @default(0)
+  newUsers        Int @default(0)
+  activeUsers     Int @default(0)
+  candidateCount  Int @default(0)
+  companyCount    Int @default(0)
+  
+  // Job metrics
+  totalJobs       Int @default(0)
+  activeJobs      Int @default(0)
+  newJobs         Int @default(0)
+  
+  // Application metrics
+  totalApplications Int @default(0)
+  newApplications   Int @default(0)
+  
+  // Search metrics
+  totalSearches   Int @default(0)
+  
+  // Matching metrics
+  totalMatches    Int @default(0)
+  avgMatchScore   Float @default(0)
+  
+  @@index([date])
+  @@unique([date])
+}
